@@ -1,0 +1,51 @@
+---
+- hosts: local
+  tasks:
+    - name: Install Requirement
+      become: yes
+      register: install_pkg
+      apt: 
+        update_cache: yes 
+        state: latest
+        pkg:
+          - mcrypt
+          - php-cli
+          - php-curl
+          - php-fpm
+          - php-intl
+          - php-json
+          - php-sqlite3
+          - php-mbstring
+          - php-dom
+          - php-xml
+          - php-pgsql 
+          - postgresql
+          - zip 
+          - unzip 
+          - php-zip
+#    - debug: var=install_pkg.stdout_lines
+
+    - name: install composer
+      shell: curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+      become: yes
+      args:
+        creates: /usr/local/bin/composer
+
+    - name: install vendors (must be install and not update, but demo application has security vulnerability and it's will be blocked with security checker)
+      shell: cd /var/www/app && composer update
+
+    - name: install PHP Code sniffer globaly
+      shell: composer global require "squizlabs/php_codesniffer=*"
+    
+    - name: install PHP Code sniffer globaly
+      shell: composer global require --dev escapestudios/symfony2-coding-standard:3.x-dev
+
+    - name: Make Nginx Config
+      become: yes
+      copy:
+        src: ./app-nginx.conf
+        dest: /etc/nginx/conf.d/app-nginx.conf
+
+    - name: Restart Nginx
+      become: yes
+      service: name=nginx state=restarted
