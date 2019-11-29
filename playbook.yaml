@@ -1,13 +1,26 @@
 ---
 - hosts: local
   tasks:
+    - name: Postgresql Apt Repo Sign
+      become: yes
+      shell: wget --quiet -O - https://postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+      args:
+        warn: false
+
+    - name: Add Postgresql Apt Repository
+      become: yes
+      apt_repository:
+        repo: deb https://apt.postgresql.org/pub/repos/apt bionic-pgdg main
+        state: present
+        update_cache: yes
+
     - name: Install Requirement
       become: yes
-      register: install_pkg
       apt: 
         update_cache: yes 
         state: latest
         pkg:
+          - nginx
           - mcrypt
           - php-cli
           - php-curl
@@ -19,26 +32,48 @@
           - php-dom
           - php-xml
           - php-pgsql 
-          - postgresql
+          - postgresql-9.4
           - zip 
           - unzip 
           - php-zip
-#    - debug: var=install_pkg.stdout_lines
 
-    - name: install composer
-      shell: curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - name: Set user and password for DB
+      shell: | 
+        if psql -t -c '\du' | cut -d \| -f 1 | grep -qw demo; then
+          psql -c "ALTER USER demo WITH SUPERUSER CREATEDB ENCRYPTED PASSWORD 'demo'"
+        else
+          psql -c "CREATE USER demo WITH SUPERUSER CREATEDB ENCRYPTED PASSWORD 'demo'"
+        fi
       become: yes
+      become_user: postgres
+      register: ps
+
+    #- debug: var=ps.stdout_lines
+
+    - name: Restart Postgresql
+      become: yes
+      service: name=postgresql state=restarted
+
+    - name: Install Composer globally
+      become: yes
+      shell: curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
       args:
-        creates: /usr/local/bin/composer
+        warn: false
 
-    - name: install vendors (must be install and not update, but demo application has security vulnerability and it's will be blocked with security checker)
-      shell: cd /var/www/app && composer update
+    - name: Install Vendor
+      shell: cd /var/www/app && composer install --no-plugins --prefer-dist --no-ansi --no-interaction --no-progress
 
-    - name: install PHP Code sniffer globaly
+    - name: Install PHP CodeSniffer globally
       shell: composer global require "squizlabs/php_codesniffer=*"
     
-    - name: install PHP Code sniffer globaly
+    - name: Install PHP CodeSniffer rules
       shell: composer global require --dev escapestudios/symfony2-coding-standard:3.x-dev
+
+    - name: Install PHPUnit
+      get_url:
+        url: https://phar.phpunit.de/phpunit-6.3.0.phar
+        dest: /var/www/app/bin/phpunit
+        mode: '+x'
 
     - name: Make Nginx Config
       become: yes
@@ -46,6 +81,24 @@
         src: ./app-nginx.conf
         dest: /etc/nginx/conf.d/app-nginx.conf
 
+    - name: Setting FPM user to vagrant
+      become: yes
+      replace:
+        path: /etc/php/7.2/fpm/pool.d/www.conf
+        regexp: 'www-data'
+        replace: 'vagrant'
+
+    - name: Setting Nginx user to vagrant
+      become: yes
+      replace:
+        path: /etc/nginx/nginx.conf
+        regexp: 'www-data'
+        replace: 'vagrant'
+
     - name: Restart Nginx
       become: yes
       service: name=nginx state=restarted
+
+    - name: Restart FPM
+      become: yes
+      service: name=php7.2-fpm state=restarted

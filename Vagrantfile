@@ -4,7 +4,7 @@ Vagrant.configure("2") do |config|
   config.vm.box = "hashicorp/bionic64"
   config.vm.synced_folder "./src/app", "/var/www/app"
   # Provision
-  config.vm.provision :shell, path: "bootstrap.sh"
+  #config.vm.provision :shell, path: "bootstrap.sh"
   # Network
   config.hostmanager.enabled = true
   config.hostmanager.manage_host = true
